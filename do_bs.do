@@ -4,7 +4,7 @@ use clean.dta, clear
 *use clean.dta, clear
 
 
-*scegli se inserire i pesi per employees al 2019
+*choose if you want to include weights for employees in 2019
 global weight "[aweight = firm_weight]"
 global suffix "_weighted" 
 *global weight ""
@@ -15,16 +15,6 @@ gen weight = employees if year == 2019
 bys id: egen firm_weight = max(weight)
 
 drop if firm_weight == .
-
-***************************************************************
-
-* problema employees 2023
-/*
-tab year if missing(employees), row
-
-gen missing_emp = missing(employees)
-tabulate year missing_emp, row //28%
-*/
 
 **************************************************************
 
@@ -65,7 +55,7 @@ gen lrevenue = ln(revenue)
 
 
 
-/*descriptive statistics in 2019
+*descriptive statistics in 2019
 estpost summarize employees perscost_pe totasset fix_asset tan_asset intan_asset prod_value av av_pe revenue p_l ros roe roa, detail
 
 esttab using "$DATAout\bs_descriptive.tex", replace ///
@@ -94,7 +84,7 @@ esttab using "$DATAout\bs_descriptive.tex", replace ///
 winsor2 employees wages_salaries perscost perscost_pe totasset fix_asset fix_asset_pe prod_value av av_pe revenue p_l ros roe roa, cuts (1, 99)
 
 
-/*descriptive statistics in 2019
+*descriptive statistics in 2019
 preserve
 keep if year == 2019 
 
@@ -128,7 +118,7 @@ restore
 * TEST baseline comparability 2019
 ********************************************************
 
-/*************OUTCOMES
+*************OUTCOMES
 preserve
 keep if year == 2019
 
@@ -142,7 +132,6 @@ postfile `results' str40 varname double mean_t double mean_c double diff str3 st
 local i = 1
 foreach v of local outcomes {
 
-    * 1. Pesi identici alla stima DiD (profit/loss non pesato)
     if "`v'" == "p_l_w" {
         local this_weight ""
     }
@@ -150,10 +139,8 @@ foreach v of local outcomes {
         local this_weight "$weight"
     }
 
-    * 2. Confronto tramite regressione pesata e clusterizzata
     quietly regress `v' treated `this_weight', vce(cluster id_municipality)
 
-    * 3. Media controlli (costante), differenza (coefficiente), media trattati
     local mean_c = _b[_cons]
     local diff   = _b[treated]
     local mean_t = `mean_c' + `diff'
@@ -162,7 +149,6 @@ foreach v of local outcomes {
     local pval = r(p)
 	display "`v': diff = " %9.3f `diff' "   p = " %6.4f `pval'
 
-    * 4. Asterischi
     if `pval' < 0.01 {
         local stars "***"
     }
@@ -186,7 +172,7 @@ postclose `results'
 
 use "`resultsfile'", clear
 
-* Scrittura diretta del file .tex (stile esttab)
+* write file .tex
 file open texfile using "$DATAout\ttest.tex", write replace
 
 file write texfile "\begin{table}[H]\centering" _n
@@ -231,7 +217,7 @@ restore
 
 */
 
-/*balance table
+*balance table
 
 preserve
 keep if year == 2019
@@ -330,7 +316,7 @@ restore
 *******************************************************
 *event centred
 gen event_time = year - 2020
-*Dummy per ogni event time 
+*Dummy for each event time 
 tabulate event_time, gen(event_time_dummy)
 *label
 local anno_inizio = 2016
@@ -339,7 +325,7 @@ forvalues i = 1/8 {
 	label variable event_time_dummy`i' "year `anno_corrente'"
 } 
 
-*Interagire dummy con treatment 
+*interaction dummy and treatment 
 forvalues j = 1 (1) 8 {
 	gen event_time_dummy`j'xtreated = event_time_dummy`j'*treated 
 }
@@ -352,11 +338,13 @@ forvalues i = 1/8 {
 
 drop event_time_dummy4*
 
+
+
 ********************************************************
 * F-test
 *******************************************************
 
-/************OUTCOMES
+************OUTCOMES
 
 preserve
 
@@ -433,7 +421,7 @@ restore
 
 
 *******************************************************
-/* Parallel trends graphs
+* Parallel trends graphs
 *******************************************************
 
 
@@ -448,7 +436,7 @@ foreach var of local outcomes {
 
     local ytitle : word `i' of `ytitles'
 
-    * profit/loss non pesato, come nelle stime
+    * profit/loss not weighted
     if "`var'" == "p_l_w" {
         local this_weight ""
     }
@@ -459,7 +447,6 @@ foreach var of local outcomes {
     preserve
     keep if !missing(`var') & !missing(firm_weight)
 
-    * medie (pesate) per anno e gruppo
     collapse (mean) m = `var' `this_weight', by(year treated)
     reshape wide m, i(year) j(treated)
 
@@ -489,14 +476,13 @@ foreach var of local outcomes {
 * GRAPHS - EVENT STUDY
 ***************************************************************
 
-local outcome "lemployees lperscost_pe lfix_asset lfix_asset_pe lprod_value lav lav_pe lrevenue p_l_w ros_w roe_w roa_w"
-local ytitles `" "ln(Employees)" "ln(Personnel Costs p. e.)" "ln(Fixed Asset)" "ln(Fixed Asset p.e.)" "ln(Production Value)" "ln(Value Added)" "ln(Value Added p.e.)" "ln(Revenue)" "Profit / Loss" "ROS" "ROE" "ROA" "'
+local outcome "lemployees lperscost_pe lfix_asset lfix_asset_pe lrevenue lprod_value lav lav_pe  p_l_w ros_w roe_w roa_w"
+local ytitles `" "ln(Employees)" "ln(Personnel Costs p. e.)" "ln(Fixed Asset)" "ln(Fixed Asset p.e.)" "ln(Revenue)" "ln(Production Value)" "ln(Value Added)" "ln(Value Added p.e.)" "Profit / Loss" "ROS" "ROE" "ROA" "'
 
 local i = 1
 foreach var of local outcome {
     local ytitle : word `i' of `ytitles'
 
-    * profit/loss non pesato
     if "`var'" == "p_l_w" {
         local this_weight ""
     }
@@ -509,7 +495,7 @@ foreach var of local outcome {
     test event_time_dummy1xtreated event_time_dummy2xtreated event_time_dummy3xtreated
     estadd scalar pval_pt = r(p)
 
-    /* estrazione coefficienti per grafico dalla stessa stima
+    * extract coefficient for the graphs
     scalar c1 = _b[event_time_dummy1xtreated]
     scalar c2 = _b[event_time_dummy2xtreated]
     scalar c3 = _b[event_time_dummy3xtreated]
@@ -570,7 +556,7 @@ twoway (rcap lb ub year, lcolor(black) lwidth(thin)) ///
 
 
 **************************************
-/*TAB
+*TAB
 *************************************
 
 local title1 "Event Study Excluding the Contruction Sector -- Activity and Input \label{tab:bs1}"
@@ -608,7 +594,7 @@ esttab model1 model2 model3 model4 using "$DATAout\construction\bs1$suffix.tex",
 			 
 
 //Tab2: Output and productivity
-esttab model5 model6 model7 using "$DATAout\construction\bs2$suffix.tex", ///
+esttab model5 model6 model7 model8 using "$DATAout\construction\bs2$suffix.tex", ///
     replace ///
     b(3) se(3) ///
     star(* 0.10 ** 0.05 *** 0.01) ///
@@ -627,7 +613,7 @@ esttab model5 model6 model7 using "$DATAout\construction\bs2$suffix.tex", ///
                event_time_dummy6xtreated "t = +1 (2021)" ///
                event_time_dummy7xtreated "t = +2 (2022)" ///
                event_time_dummy8xtreated "t = +3 (2023)") ///
-    mtitles("ln(Production Value)" "ln(Value Added)") ///
+    mtitles("ln(Revenue)" "ln(Production Value)" "ln(Value Added)" "ln(Value Added p.e.)") ///
     booktabs ///
     alignment(D{.}{.}{-1}) ///
     nonumbers ///
@@ -639,7 +625,7 @@ esttab model5 model6 model7 using "$DATAout\construction\bs2$suffix.tex", ///
 			 
 
 //Tab3: Profitability			 
-esttab model8 model9 model10 model11 model12 using "$DATAout\construction\bs3$suffix.tex", ///
+esttab model9 model10 model11 model12 using "$DATAout\construction\bs3$suffix.tex", ///
     replace ///
     b(3) se(3) ///
     star(* 0.10 ** 0.05 *** 0.01) ///
@@ -658,7 +644,7 @@ esttab model8 model9 model10 model11 model12 using "$DATAout\construction\bs3$su
                event_time_dummy6xtreated "t = +1 (2021)" ///
                event_time_dummy7xtreated "t = +2 (2022)" ///
                event_time_dummy8xtreated "t = +3 (2023)") ///
-    mtitles("ln(Revenue)" "Profit / Loss" "ROS" "ROE" "ROA") ///
+    mtitles( "Profit / Loss" "ROS" "ROE" "ROA") ///
     booktabs ///
     alignment(D{.}{.}{-1}) ///
     nonumbers ///
